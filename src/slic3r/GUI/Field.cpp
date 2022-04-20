@@ -97,9 +97,9 @@ void Field::PostInitialize()
 	case coStrings:
 	case coBools:
 	case coInts: {
-		auto tag_pos = m_opt_id.find("#");
-		if (tag_pos != std::string::npos)
-			m_opt_idx = stoi(m_opt_id.substr(tag_pos + 1, m_opt_id.size()));
+		const size_t tag_pos = m_opt_id.find("#");
+		if (tag_pos != std::string::npos && tag_pos + 1 < m_opt_id.size())
+			m_opt_idx = stoi(m_opt_id.substr(tag_pos + 1));
 		break;
 	}
 	default:
