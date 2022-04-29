@@ -157,7 +157,7 @@ if (NOT EXPAT_FOUND)
     set(EXPAT_PKG dep_EXPAT)
 endif ()
 
-set(DEP_Boost_COMPONENTS system iostreams filesystem thread log locale regex date_time)
+set(DEP_Boost_COMPONENTS system iostreams filesystem thread log locale regex date_time nowide)
 include(Boost/Boost.cmake)
 
 # The order of includes respects the dependencies between libraries
