@@ -57,6 +57,10 @@
     #include "slic3r/GUI/GUI_Init.hpp"
 #endif /* SLIC3R_GUI */
 
+#ifdef __WXGTK__
+    #include <wx/version.h>
+#endif
+
 using namespace Slic3r;
 
 static PrinterTechnology get_printer_technology(const DynamicConfig &config)
@@ -71,10 +75,13 @@ int CLI::run(int argc, char **argv)
     set_current_thread_name("slic3r_main");
 
 #ifdef __WXGTK__
+    #if !wxCHECK_VERSION(3, 1, 5)
     // On Linux, wxGTK has no support for Wayland, and the app crashes on
     // startup if gtk3 is used. This env var has to be set explicitly to
     // instruct the window manager to fall back to X server mode.
+    // This was supposedly fixed in wxWidgets 3.1.5 (https://github.com/prusa3d/PrusaSlicer/issues/8284)
     ::setenv("GDK_BACKEND", "x11", /* replace */ true);
+    #endif
 #endif
 
 	// Switch boost::filesystem to utf8.
