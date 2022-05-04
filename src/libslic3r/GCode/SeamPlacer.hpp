@@ -94,9 +94,9 @@ struct PrintObjectSeamData
 
     struct LayerSeams
     {
-        Slic3r::deque<SeamPlacerImpl::Perimeter>    perimeters;
-        std::vector<SeamPlacerImpl::SeamCandidate>  points;
-        std::unique_ptr<SeamCandidatesTree>         points_tree;
+        Slic3r::deque<SeamPlacerImpl::Perimeter> perimeters;
+        std::vector<SeamPlacerImpl::SeamCandidate> points;
+        std::unique_ptr<SeamCandidatesTree> points_tree;
     };
     // Map of PrintObjects (PO) -> vector of layers of PO -> vector of perimeter
     std::vector<LayerSeams> layers;
@@ -129,7 +129,7 @@ public:
 
     // When searching for seam clusters for alignment:
     // following value describes, how much worse score can point have and still be picked into seam cluster instead of original seam point on the same layer
-    static constexpr float seam_align_score_tolerance = 0.25f;
+    static constexpr float seam_align_score_tolerance = 0.5f;
     // seam_align_tolerable_dist - if next layer closes point is too far away, break string
     static constexpr float seam_align_tolerable_dist = 1.0f;
     // if the seam of the current layer is too far away, and the closest seam candidate is not very good, layer is skipped.
@@ -156,13 +156,14 @@ private:
     void align_seam_points(const PrintObject *po, const SeamPlacerImpl::SeamComparator &comparator);
     std::vector<std::pair<size_t, size_t>> find_seam_string(const PrintObject *po,
             std::pair<size_t, size_t> start_seam,
-            const SeamPlacerImpl::SeamComparator &comparator) const;
-    bool find_next_seam_in_layer(
-            const std::vector<PrintObjectSeamData::LayerSeams> &layers,
-            std::pair<size_t, size_t> &last_point_indexes,
-            const size_t layer_idx, const float slice_z,
             const SeamPlacerImpl::SeamComparator &comparator,
-            std::vector<std::pair<size_t, size_t>> &seam_string) const;
+            std::optional<std::pair<size_t, size_t>> &out_best_moved_seam,
+            size_t& out_moved_seams_count) const;
+    std::optional<std::pair<size_t, size_t>> find_next_seam_in_layer(
+            const std::vector<PrintObjectSeamData::LayerSeams> &layers,
+            const std::pair<size_t, size_t> &prev_point_index,
+            const size_t layer_idx, const float slice_z,
+            const SeamPlacerImpl::SeamComparator &comparator) const;
 };
 
 } // namespace Slic3r

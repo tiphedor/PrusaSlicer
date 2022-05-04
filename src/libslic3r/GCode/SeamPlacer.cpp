@@ -22,7 +22,7 @@
 
 #include "libslic3r/Utils.hpp"
 
-//#define DEBUG_FILES
+#define DEBUG_FILES
 
 #ifdef DEBUG_FILES
 #include <boost/nowide/cstdio.hpp>
@@ -295,7 +295,6 @@ struct GlobalModelInfo {
         } else {
             return 0.0f;
         }
-
     }
 
 #ifdef DEBUG_FILES
@@ -751,12 +750,12 @@ struct SeamComparator {
 };
 
 #ifdef DEBUG_FILES
-void debug_export_points(const std::vector<PrintObjectSeamData::LayerSeams>  &layers,
+void debug_export_points(const std::vector<PrintObjectSeamData::LayerSeams> &layers,
         const BoundingBox &bounding_box, std::string object_name, const SeamComparator &comparator) {
     for (size_t layer_idx = 0; layer_idx < layers.size(); ++layer_idx) {
         std::string angles_file_name = debug_out_path(
                 (object_name + "_angles_" + std::to_string(layer_idx) + ".svg").c_str());
-        SVG angles_svg {angles_file_name, bounding_box};
+        SVG angles_svg { angles_file_name, bounding_box };
         float min_vis = 0;
         float max_vis = min_vis;
 
@@ -766,7 +765,7 @@ void debug_export_points(const std::vector<PrintObjectSeamData::LayerSeams>  &la
         for (const SeamCandidate &point : layers[layer_idx].points) {
             Vec3i color = value_to_rgbi(-PI, PI, point.local_ccw_angle);
             std::string fill = "rgb(" + std::to_string(color.x()) + "," + std::to_string(color.y()) + ","
-            + std::to_string(color.z()) + ")";
+                    + std::to_string(color.z()) + ")";
             angles_svg.draw(scaled(Vec2f(point.position.head<2>())), fill);
             min_vis = std::min(min_vis, point.visibility);
             max_vis = std::max(max_vis, point.visibility);
@@ -778,31 +777,32 @@ void debug_export_points(const std::vector<PrintObjectSeamData::LayerSeams>  &la
 
         std::string visiblity_file_name = debug_out_path(
                 (object_name + "_visibility_" + std::to_string(layer_idx) + ".svg").c_str());
-        SVG visibility_svg {visiblity_file_name, bounding_box};
+        SVG visibility_svg { visiblity_file_name, bounding_box };
         std::string weights_file_name = debug_out_path(
                 (object_name + "_weight_" + std::to_string(layer_idx) + ".svg").c_str());
-        SVG weight_svg {weights_file_name, bounding_box};
+        SVG weight_svg { weights_file_name, bounding_box };
         std::string overhangs_file_name = debug_out_path(
                 (object_name + "_overhang_" + std::to_string(layer_idx) + ".svg").c_str());
-        SVG overhangs_svg {overhangs_file_name, bounding_box};
+        SVG overhangs_svg { overhangs_file_name, bounding_box };
 
         for (const SeamCandidate &point : layers[layer_idx].points) {
             Vec3i color = value_to_rgbi(min_vis, max_vis, point.visibility);
             std::string visibility_fill = "rgb(" + std::to_string(color.x()) + "," + std::to_string(color.y()) + ","
-            + std::to_string(color.z()) + ")";
+                    + std::to_string(color.z()) + ")";
             visibility_svg.draw(scaled(Vec2f(point.position.head<2>())), visibility_fill);
 
-            Vec3i weight_color = value_to_rgbi(min_weight, max_weight, -comparator.compute_angle_penalty(point.local_ccw_angle));
+            Vec3i weight_color = value_to_rgbi(min_weight, max_weight,
+                    -comparator.compute_angle_penalty(point.local_ccw_angle));
             std::string weight_fill = "rgb(" + std::to_string(weight_color.x()) + "," + std::to_string(weight_color.y())
-            + ","
-            + std::to_string(weight_color.z()) + ")";
+                    + ","
+                    + std::to_string(weight_color.z()) + ")";
             weight_svg.draw(scaled(Vec2f(point.position.head<2>())), weight_fill);
 
             Vec3i overhang_color = value_to_rgbi(-0.5, 0.5, std::clamp(point.overhang, -0.5f, 0.5f));
             std::string overhang_fill = "rgb(" + std::to_string(overhang_color.x()) + ","
-            + std::to_string(overhang_color.y())
-            + ","
-            + std::to_string(overhang_color.z()) + ")";
+                    + std::to_string(overhang_color.y())
+                    + ","
+                    + std::to_string(overhang_color.z()) + ")";
             overhangs_svg.draw(scaled(Vec2f(point.position.head<2>())), overhang_fill);
         }
     }
@@ -1020,22 +1020,21 @@ void SeamPlacer::calculate_overhangs_and_layer_embedding(const PrintObject *po) 
 // If the closest point is good enough to replace current chosen seam, it is stored in potential_string_seams, returns true and updates last_point_pos
 // Otherwise does nothing, returns false
 // Used by align_seam_points().
-bool SeamPlacer::find_next_seam_in_layer(
+std::optional<std::pair<size_t, size_t>> SeamPlacer::find_next_seam_in_layer(
         const std::vector<PrintObjectSeamData::LayerSeams> &layers,
-        std::pair<size_t, size_t> &last_point_indexes,
+        const std::pair<size_t, size_t> &prev_point_index,
         const size_t layer_idx, const float slice_z,
-        const SeamPlacerImpl::SeamComparator &comparator,
-        std::vector<std::pair<size_t, size_t>> &seam_string) const {
+        const SeamPlacerImpl::SeamComparator &comparator) const {
     using namespace SeamPlacerImpl;
 
-    const SeamCandidate &last_point = layers[last_point_indexes.first].points[last_point_indexes.second];
+    const SeamCandidate &last_point = layers[prev_point_index.first].points[prev_point_index.second];
 
     Vec3f projected_position { last_point.position.x(), last_point.position.y(), slice_z };
     std::vector<size_t> nearby_points_indices = find_nearby_points(*layers[layer_idx].points_tree, projected_position,
             SeamPlacer::seam_align_tolerable_dist);
 
     if (nearby_points_indices.empty()) {
-        return false;
+        return {};
     }
 
     size_t best_nearby_point_index = nearby_points_indices[0];
@@ -1064,7 +1063,7 @@ bool SeamPlacer::find_next_seam_in_layer(
 
     if (nearest_point.perimeter.finalized) {
         //all points are from already finalized perimeter, skip
-        return false;
+        return {};
     }
 
     //from the nearest_point, deduce index of seam in the next layer
@@ -1074,9 +1073,7 @@ bool SeamPlacer::find_next_seam_in_layer(
     if (next_layer_seam.central_enforcer
             && (next_layer_seam.position - projected_position).squaredNorm()
                     < sqr(3 * SeamPlacer::seam_align_tolerable_dist)) {
-        last_point_indexes = std::pair<size_t, size_t> { layer_idx, nearest_point.perimeter.seam_index };
-        seam_string.push_back(last_point_indexes);
-        return true;
+        return {std::pair<size_t, size_t> {layer_idx, nearest_point.perimeter.seam_index}};
     }
 
     // Next compare nearest and nearby point. If they are similar pick nearest, Otherwise expect curvy lines on smooth surfaces like chimney of benchy model
@@ -1084,24 +1081,22 @@ bool SeamPlacer::find_next_seam_in_layer(
     if (comparator.are_similar(nearest_point, best_nearby_point)
             && comparator.is_first_not_much_worse(nearest_point, next_layer_seam)
             && comparator.are_similar(last_point, nearest_point)) {
-        last_point_indexes = std::pair<size_t, size_t> { layer_idx, nearest_point_index };
-        seam_string.push_back(last_point_indexes);
-        return true;
+        return {std::pair<size_t, size_t> {layer_idx, nearest_point_index}};
     }
     // If nearest point is not good enough, try it with the best nearby point.
     if (comparator.is_first_not_much_worse(best_nearby_point, next_layer_seam)
             && comparator.are_similar(last_point, nearest_point)) {
-        last_point_indexes = std::pair<size_t, size_t> { layer_idx, best_nearby_point_index };
-        seam_string.push_back(last_point_indexes);
-        return true;
+        return {std::pair<size_t, size_t> {layer_idx, best_nearby_point_index}};
     }
 
-    return false;
+    return {};
 }
 
 std::vector<std::pair<size_t, size_t>> SeamPlacer::find_seam_string(const PrintObject *po,
-        std::pair<size_t, size_t> start_seam,
-        const SeamPlacerImpl::SeamComparator &comparator) const {
+        std::pair<size_t, size_t> start_seam, const SeamPlacerImpl::SeamComparator &comparator,
+        std::optional<std::pair<size_t, size_t>> &out_best_moved_seam, size_t &out_moved_seams_count) const {
+    out_best_moved_seam.reset();
+    out_moved_seams_count = 0;
     const std::vector<PrintObjectSeamData::LayerSeams> &layers = m_seam_per_object.find(po)->second.layers;
     int layer_idx = start_seam.first;
     int seam_index = start_seam.second;
@@ -1109,14 +1104,28 @@ std::vector<std::pair<size_t, size_t>> SeamPlacer::find_seam_string(const PrintO
     //initialize searching for seam string - cluster of nearby seams on previous and next layers
     int skips = SeamPlacer::seam_align_tolerable_skips / 2;
     int next_layer = layer_idx + 1;
-    std::pair<size_t, size_t> last_point_indexes = start_seam;
+    std::pair<size_t, size_t> prev_point_index = start_seam;
     std::vector<std::pair<size_t, size_t>> seam_string { start_seam };
 
     //find seams or potential seams in forward direction; there is a budget of skips allowed
     while (skips >= 0 && next_layer < int(layers.size())) {
-        if (find_next_seam_in_layer(layers, last_point_indexes, next_layer,
-                float(po->get_layer(next_layer)->slice_z), comparator, seam_string)) {
-            //String added, last_point_pos updated, nothing to be done
+        auto maybe_next_seam = find_next_seam_in_layer(layers, prev_point_index, next_layer,
+                float(po->get_layer(next_layer)->slice_z), comparator);
+        if (maybe_next_seam.has_value()) {
+
+            std::pair<size_t, size_t> next_seam_coords = maybe_next_seam.value();
+            const auto &next_seam = layers[next_seam_coords.first].points[next_seam_coords.second];
+            bool is_moved = next_seam.perimeter.seam_index != next_seam_coords.second;
+            out_moved_seams_count += is_moved;
+            if (is_moved && (!out_best_moved_seam.has_value() ||
+                    comparator.is_first_better(next_seam,
+                            layers[out_best_moved_seam.value().first].points[out_best_moved_seam.value().second]))) {
+                out_best_moved_seam = { next_seam_coords };
+            }
+
+            seam_string.push_back(maybe_next_seam.value());
+            prev_point_index = seam_string.back();
+            //String added, prev_point_index updated
         } else {
             // Layer skipped, reduce number of available skips
             skips--;
@@ -1127,11 +1136,25 @@ std::vector<std::pair<size_t, size_t>> SeamPlacer::find_seam_string(const PrintO
     //do additional check in back direction
     next_layer = layer_idx - 1;
     skips = SeamPlacer::seam_align_tolerable_skips / 2;
-    last_point_indexes = std::pair<size_t, size_t>(layer_idx, seam_index);
+    prev_point_index = std::pair<size_t, size_t>(layer_idx, seam_index);
     while (skips >= 0 && next_layer >= 0) {
-        if (find_next_seam_in_layer(layers, last_point_indexes, next_layer,
-                float(po->get_layer(next_layer)->slice_z), comparator, seam_string)) {
-            //String added, last_point_pos updated, nothing to be done
+        auto maybe_next_seam = find_next_seam_in_layer(layers, prev_point_index, next_layer,
+                float(po->get_layer(next_layer)->slice_z), comparator);
+        if (maybe_next_seam.has_value()) {
+
+            std::pair<size_t, size_t> next_seam_coords = maybe_next_seam.value();
+            const auto &next_seam = layers[next_seam_coords.first].points[next_seam_coords.second];
+            bool is_moved = next_seam.perimeter.seam_index != next_seam_coords.second;
+            out_moved_seams_count += is_moved;
+            if (is_moved && (!out_best_moved_seam.has_value() ||
+                    comparator.is_first_better(next_seam,
+                            layers[out_best_moved_seam.value().first].points[out_best_moved_seam.value().second]))) {
+                out_best_moved_seam = { next_seam_coords };
+            }
+
+            seam_string.push_back(maybe_next_seam.value());
+            prev_point_index = seam_string.back();
+            //String added, prev_point_index updated
         } else {
             // Layer skipped, reduce number of available skips
             skips--;
@@ -1192,18 +1215,37 @@ void SeamPlacer::align_seam_points(const PrintObject *po, const SeamPlacerImpl::
     //align the seam points - start with the best, and check if they are aligned, if yes, skip, else start alignment
     // Keeping the vectors outside, so with a bit of luck they will not get reallocated after couple of for loop iterations.
     std::vector<std::pair<size_t, size_t>> seam_string;
+    std::vector<std::pair<size_t, size_t>> alternative_seam_string;
     std::vector<Vec2f> observations;
     std::vector<float> observation_points;
     std::vector<float> weights;
-    for (const std::pair<size_t, size_t> &seam : seams) {
-        size_t layer_idx = seam.first;
-        size_t seam_index = seam.second;
+
+    int global_index = 0;
+    while (global_index < int(seams.size())) {
+        size_t layer_idx = seams[global_index].first;
+        size_t seam_index = seams[global_index].second;
+        global_index++;
         const std::vector<SeamCandidate> &layer_perimeter_points = layers[layer_idx].points;
         if (layer_perimeter_points[seam_index].perimeter.finalized) {
             // This perimeter is already aligned, skip seam
             continue;
         } else {
-            seam_string = this->find_seam_string(po, seam, comparator);
+            std::optional<std::pair<size_t, size_t>> best_moved_seam;
+            size_t moved_seams_count;
+            seam_string = this->find_seam_string(po, { layer_idx, seam_index }, comparator, best_moved_seam,
+                    moved_seams_count);
+            if (best_moved_seam.has_value()) {
+                size_t alternative_moved_seams_count;
+                alternative_seam_string = this->find_seam_string(po, best_moved_seam.value(), comparator,
+                        best_moved_seam, alternative_moved_seams_count);
+                if (alternative_seam_string.size() >= SeamPlacer::seam_align_minimum_string_seams &&
+                        alternative_moved_seams_count < moved_seams_count) {
+                    seam_string = std::move(alternative_seam_string);
+                    // finish loop. but repeat the alignment for the current seam, since it could be skipped due to alternative path being aligned.
+                    global_index--;
+                }
+            }
+
             if (seam_string.size() < seam_align_minimum_string_seams) {
                 //string NOT long enough to be worth aligning, skip
                 continue;
@@ -1263,7 +1305,7 @@ void SeamPlacer::align_seam_points(const PrintObject *po, const SeamPlacerImpl::
             };
             Vec3f color { randf(), randf(), randf() };
             for (size_t i = 0; i < seam_string.size(); ++i) {
-                auto orig_seam =  layers[seam_string[i].first].points[seam_string[i].second];
+                auto orig_seam = layers[seam_string[i].first].points[seam_string[i].second];
                 fprintf(clusters, "v %f %f %f %f %f %f \n", orig_seam.position[0],
                         orig_seam.position[1],
                         orig_seam.position[2], color[0], color[1],
@@ -1355,7 +1397,7 @@ void SeamPlacer::init(const Print &print) {
         }
 
 #ifdef DEBUG_FILES
-        debug_export_points(layers, po->bounding_box(), std::to_string(po->id().id),
+        debug_export_points(m_seam_per_object[po].layers, po->bounding_box(), std::to_string(po->id().id),
                 comparator);
 #endif
     }
