@@ -613,7 +613,8 @@ void gather_enforcers_blockers(GlobalModelInfo &result, const PrintObject *po) {
 
 struct SeamComparator {
     SeamPosition setup;
-
+    // slightly prefer rear location, to improve placement on symetrical object (cylinder). offset to right a little, since some objects have flat rear plane (cube)
+    const Vec2f rear_location { 500.0f, 10000.0f };
     SeamComparator(SeamPosition setup) :
             setup(setup) {
     }
@@ -645,8 +646,16 @@ struct SeamComparator {
         }
 
         if (setup == SeamPosition::spRear) {
+            if (a.position.y() == b.position.y()) {
+                return a.position.x() > b.position.x();
+            }
             return a.position.y() > b.position.y();
         }
+
+        float distance_to_rear_penalty_a = 0.1f
+                - gauss((a.position.head<2>() - rear_location).norm() / rear_location.norm(), 0.0f, 0.1f, 1.0f);
+        float distance_to_rear_penalty_b = 0.1f
+                - gauss((b.position.head<2>() - rear_location).norm() / rear_location.norm(), 0.0f, 0.1f, 1.0f);
 
         float distance_penalty_a = 1.0f;
         float distance_penalty_b = 1.0f;
@@ -658,10 +667,10 @@ struct SeamComparator {
         //ranges:          [0 - 1]                                              (0 - 1.3]                               [0.1 - 1.1)
         float penalty_a = (a.visibility + SeamPlacer::additional_angle_importance)
                 * compute_angle_penalty(a.local_ccw_angle)
-                * distance_penalty_a;
+                * distance_penalty_a + distance_to_rear_penalty_a;
         float penalty_b = (b.visibility + SeamPlacer::additional_angle_importance)
                 * compute_angle_penalty(b.local_ccw_angle)
-                * distance_penalty_b;
+                * distance_penalty_b + distance_to_rear_penalty_b;
 
         return penalty_a < penalty_b;
     }
@@ -706,14 +715,22 @@ struct SeamComparator {
         }
 
         if (setup == SeamPosition::spRear) {
+            if (a.position.y() == b.position.y()) {
+                return a.position.x() > b.position.x();
+            }
             return a.position.y() > b.position.y();
         }
 
+        float distance_to_rear_penalty_a = 0.1f
+                - gauss((a.position.head<2>() - rear_location).norm() / rear_location.norm(), 0.0f, 0.1f, 1.0f);
+        float distance_to_rear_penalty_b = 0.1f
+                - gauss((b.position.head<2>() - rear_location).norm() / rear_location.norm(), 0.0f, 0.1f, 1.0f);
+
         //ranges:          [0 - 1]                                          (0 - 1.3]                  ;
         float penalty_a = (a.visibility + SeamPlacer::additional_angle_importance)
-                * compute_angle_penalty(a.local_ccw_angle);
+                * compute_angle_penalty(a.local_ccw_angle) + distance_to_rear_penalty_a;
         float penalty_b = (b.visibility + SeamPlacer::additional_angle_importance)
-                * compute_angle_penalty(b.local_ccw_angle);
+                * compute_angle_penalty(b.local_ccw_angle) + distance_to_rear_penalty_b;
 
         return penalty_a <= penalty_b || penalty_a - penalty_b < SeamPlacer::seam_align_score_tolerance;
     }
@@ -1082,6 +1099,49 @@ bool SeamPlacer::find_next_seam_in_layer(
     return false;
 }
 
+std::vector<std::pair<size_t, size_t>> SeamPlacer::find_seam_string(const PrintObject *po,
+        std::pair<size_t, size_t> start_seam,
+        const SeamPlacerImpl::SeamComparator &comparator) const {
+    const std::vector<PrintObjectSeamData::LayerSeams> &layers = m_seam_per_object.find(po)->second.layers;
+    int layer_idx = start_seam.first;
+    int seam_index = start_seam.second;
+
+    //initialize searching for seam string - cluster of nearby seams on previous and next layers
+    int skips = SeamPlacer::seam_align_tolerable_skips / 2;
+    int next_layer = layer_idx + 1;
+    std::pair<size_t, size_t> last_point_indexes = start_seam;
+    std::vector<std::pair<size_t, size_t>> seam_string { start_seam };
+
+    //find seams or potential seams in forward direction; there is a budget of skips allowed
+    while (skips >= 0 && next_layer < int(layers.size())) {
+        if (find_next_seam_in_layer(layers, last_point_indexes, next_layer,
+                float(po->get_layer(next_layer)->slice_z), comparator, seam_string)) {
+            //String added, last_point_pos updated, nothing to be done
+        } else {
+            // Layer skipped, reduce number of available skips
+            skips--;
+        }
+        next_layer++;
+    }
+
+    //do additional check in back direction
+    next_layer = layer_idx - 1;
+    skips = SeamPlacer::seam_align_tolerable_skips / 2;
+    last_point_indexes = std::pair<size_t, size_t>(layer_idx, seam_index);
+    while (skips >= 0 && next_layer >= 0) {
+        if (find_next_seam_in_layer(layers, last_point_indexes, next_layer,
+                float(po->get_layer(next_layer)->slice_z), comparator, seam_string)) {
+            //String added, last_point_pos updated, nothing to be done
+        } else {
+            // Layer skipped, reduce number of available skips
+            skips--;
+        }
+        next_layer--;
+    }
+
+    return seam_string;
+}
+
 // clusters already chosen seam points into strings across multiple layers, and then
 // aligns the strings via polynomial fit
 // Does not change the positions of the SeamCandidates themselves, instead stores
@@ -1143,41 +1203,7 @@ void SeamPlacer::align_seam_points(const PrintObject *po, const SeamPlacerImpl::
             // This perimeter is already aligned, skip seam
             continue;
         } else {
-
-            //initialize searching for seam string - cluster of nearby seams on previous and next layers
-            int skips = SeamPlacer::seam_align_tolerable_skips / 2;
-            int next_layer = layer_idx + 1;
-            std::pair<size_t, size_t> last_point_indexes = std::pair<size_t, size_t>(layer_idx, seam_index);
-
-            seam_string = { std::pair<size_t, size_t>(layer_idx, seam_index) };
-
-            //find seams or potential seams in forward direction; there is a budget of skips allowed
-            while (skips >= 0 && next_layer < int(layers.size())) {
-                if (find_next_seam_in_layer(layers, last_point_indexes, next_layer,
-                        float(po->get_layer(next_layer)->slice_z), comparator, seam_string)) {
-                    //String added, last_point_pos updated, nothing to be done
-                } else {
-                    // Layer skipped, reduce number of available skips
-                    skips--;
-                }
-                next_layer++;
-            }
-
-            //do additional check in back direction
-            next_layer = layer_idx - 1;
-            skips = SeamPlacer::seam_align_tolerable_skips / 2;
-            last_point_indexes = std::pair<size_t, size_t>(layer_idx, seam_index);
-            while (skips >= 0 && next_layer >= 0) {
-                if (find_next_seam_in_layer(layers, last_point_indexes, next_layer,
-                        float(po->get_layer(next_layer)->slice_z), comparator, seam_string)) {
-                    //String added, last_point_pos updated, nothing to be done
-                } else {
-                    // Layer skipped, reduce number of available skips
-                    skips--;
-                }
-                next_layer--;
-            }
-
+            seam_string = this->find_seam_string(po, seam, comparator);
             if (seam_string.size() < seam_align_minimum_string_seams) {
                 //string NOT long enough to be worth aligning, skip
                 continue;

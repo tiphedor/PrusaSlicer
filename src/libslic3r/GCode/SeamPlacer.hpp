@@ -129,7 +129,7 @@ public:
 
     // When searching for seam clusters for alignment:
     // following value describes, how much worse score can point have and still be picked into seam cluster instead of original seam point on the same layer
-    static constexpr float seam_align_score_tolerance = 0.5f;
+    static constexpr float seam_align_score_tolerance = 0.25f;
     // seam_align_tolerable_dist - if next layer closes point is too far away, break string
     static constexpr float seam_align_tolerable_dist = 1.0f;
     // if the seam of the current layer is too far away, and the closest seam candidate is not very good, layer is skipped.
@@ -154,6 +154,9 @@ private:
             const SeamPlacerImpl::GlobalModelInfo &global_model_info);
     void calculate_overhangs_and_layer_embedding(const PrintObject *po);
     void align_seam_points(const PrintObject *po, const SeamPlacerImpl::SeamComparator &comparator);
+    std::vector<std::pair<size_t, size_t>> find_seam_string(const PrintObject *po,
+            std::pair<size_t, size_t> start_seam,
+            const SeamPlacerImpl::SeamComparator &comparator) const;
     bool find_next_seam_in_layer(
             const std::vector<PrintObjectSeamData::LayerSeams> &layers,
             std::pair<size_t, size_t> &last_point_indexes,
