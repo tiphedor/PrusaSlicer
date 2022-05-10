@@ -178,23 +178,21 @@ std::vector<FaceVisibilityInfo> raycast_visibility(const AABBTreeIndirect::Tree<
                             bool some_hit = AABBTreeIndirect::intersect_ray_all_hits(triangles.vertices,
                                     triangles.indices, raycasting_tree,
                                     ray_origin_d, final_ray_dir_d, hits);
-                            if (some_hit && its_face_normal(triangles, hits[0].id).dot(final_ray_dir) <= 0) {
-                                int in_negative = 0;
-                                int in_positive = 0;
+                            if (some_hit) {
+                                int counter = 0;
                                 // NOTE: iterating in reverse, from the last hit for one simple reason: We know the state of the ray at that point;
                                 //  It cannot be inside model, and it cannot be inside negative volume
                                 for (int hit_index = int(hits.size()) - 1; hit_index >= 0; --hit_index) {
                                     Vec3f face_normal = its_face_normal(triangles, hits[hit_index].id);
                                     if (hits[hit_index].id >= int(negative_volumes_start_index)) { //negative volume hit
-                                        in_negative += sgn(face_normal.dot(final_ray_dir)); // if volume face aligns with ray dir, we are leaving negative space
+                                        counter -= sgn(face_normal.dot(final_ray_dir)); // if volume face aligns with ray dir, we are leaving negative space
                                         // which in reverse hit analysis means, that we are entering negative space :) and vice versa
                                     } else {
-                                        in_positive += sgn(face_normal.dot(final_ray_dir));
+                                        counter += sgn(face_normal.dot(final_ray_dir));
                                     }
-                                    if (in_positive > 0 && in_negative <= 0) {
-                                        dest.visibility -= decrease;
-                                        break;
-                                    }
+                                }
+                                if (counter == 0) {
+                                    dest.visibility -= decrease;
                                 }
                             }
                         }
@@ -321,12 +319,10 @@ struct GlobalModelInfo {
 
         for (size_t i = 0; i < divided_mesh.vertices.size(); ++i) {
             float visibility = calculate_point_visibility(divided_mesh.vertices[i]);
-            Vec3f color = value_to_rgbf(0.0f, 1.0f,
-                    visibility);
+            Vec3f color = value_to_rgbf(0.0f, 1.0f, visibility);
             fprintf(fp, "v %f %f %f  %f %f %f\n",
                     divided_mesh.vertices[i](0), divided_mesh.vertices[i](1), divided_mesh.vertices[i](2),
-                    color(0), color(1), color(2)
-                            );
+                    color(0), color(1), color(2));
         }
         for (size_t i = 0; i < divided_mesh.indices.size(); ++i)
             fprintf(fp, "f %d %d %d\n", divided_mesh.indices[i][0] + 1, divided_mesh.indices[i][1] + 1,
@@ -557,15 +553,55 @@ void compute_global_occlusion(GlobalModelInfo &result, const PrintObject *po) {
     << "SeamPlacer: simplify occlusion meshes: start";
 
     //simplify raycasting mesh
-    its_quadric_edge_collapse(triangle_set, SeamPlacer::raycasting_decimation_target_triangle_count, nullptr, nullptr,
-            nullptr);
-    triangle_set = its_subdivide(triangle_set, SeamPlacer::raycasting_subdivision_target_length);
+    {
+        its_quadric_edge_collapse(triangle_set, SeamPlacer::raycasting_decimation_target_triangle_count, nullptr,
+                nullptr,
+                nullptr);
+        float triangle_set_area = tbb::parallel_reduce(tbb::blocked_range<size_t>(0, triangle_set.indices.size()), 0,
+                [&triangle_set](
+                        tbb::blocked_range<size_t> r, float sum) {
+                    for (size_t t_idx = r.begin(); t_idx < r.end(); ++t_idx) {
+                        const Vec3f &a = triangle_set.vertices[triangle_set.indices[t_idx].x()];
+                        const Vec3f &b = triangle_set.vertices[triangle_set.indices[t_idx].y()];
+                        const Vec3f &c = triangle_set.vertices[triangle_set.indices[t_idx].z()];
+                        sum += 0.5f * (b - a).cross(c - a).norm();
+                    }
+                    return sum;
+                }, std::plus<float>());
+
+        float target_triangle_area = triangle_set_area / SeamPlacer::raycasting_subdivision_target_triangle_count;
+        float target_triangle_length = 2 * 1.316 * sqrtf(target_triangle_area); //assuming 30-30-120 triangle
+        float subdivision_length = std::max(SeamPlacer::raycasting_subdivision_target_length, target_triangle_length);
+        triangle_set = its_subdivide(triangle_set, subdivision_length);
+        BOOST_LOG_TRIVIAL(debug)
+        << "SeamPlacer: triangle set after subdivision: " << triangle_set.indices.size();
+    }
 
     //simplify negative volumes
-    its_quadric_edge_collapse(negative_volumes_set, SeamPlacer::raycasting_decimation_target_triangle_count, nullptr,
-            nullptr,
-            nullptr);
-    negative_volumes_set = its_subdivide(negative_volumes_set, SeamPlacer::raycasting_subdivision_target_length);
+    {
+        its_quadric_edge_collapse(negative_volumes_set, SeamPlacer::raycasting_decimation_target_triangle_count,
+                nullptr,
+                nullptr,
+                nullptr);
+        float negative_volumes_set_area = tbb::parallel_reduce(
+                tbb::blocked_range<size_t>(0, negative_volumes_set.indices.size()), 0,
+                [&negative_volumes_set](
+                        tbb::blocked_range<size_t> r, float sum) {
+                    for (size_t t_idx = r.begin(); t_idx < r.end(); ++t_idx) {
+                        const Vec3f &a = negative_volumes_set.vertices[negative_volumes_set.indices[t_idx].x()];
+                        const Vec3f &b = negative_volumes_set.vertices[negative_volumes_set.indices[t_idx].y()];
+                        const Vec3f &c = negative_volumes_set.vertices[negative_volumes_set.indices[t_idx].z()];
+                        sum += 0.5f * (b - a).cross(c - a).norm();
+                    }
+                    return sum;
+                }, std::plus<float>());
+
+        float target_triangle_area = negative_volumes_set_area
+                / SeamPlacer::raycasting_subdivision_target_triangle_count;
+        float target_triangle_length = 2 * 1.316 * sqrtf(target_triangle_area);  //assuming 30-30-120 triangle
+        float subdivision_length = std::max(SeamPlacer::raycasting_subdivision_target_length, target_triangle_length);
+        negative_volumes_set = its_subdivide(negative_volumes_set, subdivision_length);
+    }
 
     size_t negative_volumes_start_index = triangle_set.indices.size();
     its_merge(triangle_set, negative_volumes_set);
@@ -1077,15 +1113,12 @@ std::optional<std::pair<size_t, size_t>> SeamPlacer::find_next_seam_in_layer(
     }
 
     // Next compare nearest and nearby point. If they are similar pick nearest, Otherwise expect curvy lines on smooth surfaces like chimney of benchy model
-    // We also compare it to the last point, to detect sharp changes in the scoring - that points to change in the model geometry and string should be ended.
     if (comparator.are_similar(nearest_point, best_nearby_point)
-            && comparator.is_first_not_much_worse(nearest_point, next_layer_seam)
-            && comparator.are_similar(last_point, nearest_point)) {
+            && comparator.is_first_not_much_worse(nearest_point, next_layer_seam)) {
         return {std::pair<size_t, size_t> {layer_idx, nearest_point_index}};
     }
     // If nearest point is not good enough, try it with the best nearby point.
-    if (comparator.is_first_not_much_worse(best_nearby_point, next_layer_seam)
-            && comparator.are_similar(last_point, nearest_point)) {
+    if (comparator.is_first_not_much_worse(best_nearby_point, next_layer_seam)) {
         return {std::pair<size_t, size_t> {layer_idx, best_nearby_point_index}};
     }
 
@@ -1204,11 +1237,13 @@ void SeamPlacer::align_seam_points(const PrintObject *po, const SeamPlacerImpl::
         }
     }
 
+    Vec2f back_attractor = 2.0f * unscaled(po->bounding_box().max).cast<float>();
     //sort them before alignment. Alignment is sensitive to initializaion, this gives it better chance to choose something nice
     std::sort(seams.begin(), seams.end(),
-            [&comparator, &layers](const std::pair<size_t, size_t> &left, const std::pair<size_t, size_t> &right) {
+            [&comparator, &layers, &back_attractor](const std::pair<size_t, size_t> &left,
+                    const std::pair<size_t, size_t> &right) {
                 return comparator.is_first_better(layers[left.first].points[left.second],
-                        layers[right.first].points[right.second]);
+                        layers[right.first].points[right.second], back_attractor);
             }
     );
 

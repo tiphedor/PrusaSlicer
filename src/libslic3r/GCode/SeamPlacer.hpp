@@ -112,6 +112,8 @@ struct PrintObjectSeamData
 class SeamPlacer {
 public:
     static constexpr size_t raycasting_decimation_target_triangle_count = 10000;
+    // for subdivision, both following criteria are considered, and the one with less resulting triangles is used
+    static constexpr size_t raycasting_subdivision_target_triangle_count = 15000;
     static constexpr float raycasting_subdivision_target_length = 2.0f;
     //square of number of rays per triangle
     static constexpr size_t sqr_rays_per_triangle = 7;
@@ -120,7 +122,7 @@ public:
     static constexpr float polygon_local_angles_arm_distance = 0.5f;
 
     // increases angle importance at the cost of deacreasing visibility info importance. must be > 0
-    static constexpr float additional_angle_importance = 0.4f;
+    static constexpr float additional_angle_importance = 0.3f;
 
     // If enforcer or blocker is closer to the seam candidate than this limit, the seam candidate is set to Blocker or Enforcer
     static constexpr float enforcer_blocker_distance_tolerance = 0.35f;
@@ -129,7 +131,7 @@ public:
 
     // When searching for seam clusters for alignment:
     // following value describes, how much worse score can point have and still be picked into seam cluster instead of original seam point on the same layer
-    static constexpr float seam_align_score_tolerance = 0.3f;
+    static constexpr float seam_align_score_tolerance = 0.2f;
     // seam_align_tolerable_dist - if next layer closes point is too far away, break string
     static constexpr float seam_align_tolerable_dist = 1.0f;
     // if the seam of the current layer is too far away, and the closest seam candidate is not very good, layer is skipped.
