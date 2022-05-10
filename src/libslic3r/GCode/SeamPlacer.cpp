@@ -484,7 +484,7 @@ void process_perimeter_polygon(const Polygon &orig_polygon, float z_coord, const
                 break;
             }
             viable_points_indices.push_back(last_enforced_idx);
-            if (abs(result.points[last_enforced_idx].local_ccw_angle) > 0.4 * PI) {
+            if (abs(result.points[last_enforced_idx].local_ccw_angle) > 0.3 * PI) {
                 orig_large_angle_points_indices.push_back(last_enforced_idx);
             }
             last_enforced_idx = next_index(last_enforced_idx);
