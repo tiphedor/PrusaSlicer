@@ -113,7 +113,7 @@ class SeamPlacer {
 public:
     static constexpr size_t raycasting_decimation_target_triangle_count = 10000;
     // for subdivision, both following criteria are considered, and the one with less resulting triangles is used
-    static constexpr size_t raycasting_subdivision_target_triangle_count = 15000;
+    static constexpr size_t raycasting_subdivision_target_triangle_count = 20000;
     static constexpr float raycasting_subdivision_target_length = 2.0f;
     //square of number of rays per triangle
     static constexpr size_t sqr_rays_per_triangle = 7;
@@ -140,7 +140,7 @@ public:
     // minimum number of seams needed in cluster to make alignment happen
     static constexpr size_t seam_align_minimum_string_seams = 6;
     // points covered by spline; determines number of splines for the given string
-    static constexpr size_t seam_align_seams_per_segment = 8;
+    static constexpr size_t seam_align_seams_per_segment = 14;
 
     //The following data structures hold all perimeter points for all PrintObject.
     std::unordered_map<const PrintObject*, PrintObjectSeamData> m_seam_per_object;

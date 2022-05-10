@@ -1112,9 +1112,8 @@ std::optional<std::pair<size_t, size_t>> SeamPlacer::find_next_seam_in_layer(
         return {std::pair<size_t, size_t> {layer_idx, nearest_point.perimeter.seam_index}};
     }
 
-    // Next compare nearest and nearby point. If they are similar pick nearest, Otherwise expect curvy lines on smooth surfaces like chimney of benchy model
-    if (comparator.are_similar(nearest_point, best_nearby_point)
-            && comparator.is_first_not_much_worse(nearest_point, next_layer_seam)) {
+    // First try to align the nearest, then try the best nearby
+    if (comparator.is_first_not_much_worse(nearest_point, next_layer_seam)) {
         return {std::pair<size_t, size_t> {layer_idx, nearest_point_index}};
     }
     // If nearest point is not good enough, try it with the best nearby point.
@@ -1237,13 +1236,12 @@ void SeamPlacer::align_seam_points(const PrintObject *po, const SeamPlacerImpl::
         }
     }
 
-    Vec2f back_attractor = 2.0f * unscaled(po->bounding_box().max).cast<float>();
     //sort them before alignment. Alignment is sensitive to initializaion, this gives it better chance to choose something nice
     std::sort(seams.begin(), seams.end(),
-            [&comparator, &layers, &back_attractor](const std::pair<size_t, size_t> &left,
+            [&comparator, &layers](const std::pair<size_t, size_t> &left,
                     const std::pair<size_t, size_t> &right) {
                 return comparator.is_first_better(layers[left.first].points[left.second],
-                        layers[right.first].points[right.second], back_attractor);
+                        layers[right.first].points[right.second]);
             }
     );
 
