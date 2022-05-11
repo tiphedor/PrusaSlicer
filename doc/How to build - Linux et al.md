@@ -26,8 +26,7 @@ autoconf \
 cmake \
 libglu1-mesa-dev \
 libgtk-3-dev \
-libdbus-1-dev \
-
+libdbus-1-dev
 ```
 The names of the packages may be different on different distros.
 
