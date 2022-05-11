@@ -614,15 +614,15 @@ bool QuadricEdgeCollapse::is_flipped(const Vec3f &               new_vertex,
         d2.normalize();
 
         float dot = d1.dot(d2);
-        if (std::abs(dot) > triangle_beauty_threshold) { // OK, the new triangle is suspiciously ugly, but it can still be better than the original
+        if (dot > triangle_beauty_threshold || dot < -triangle_beauty_threshold) { // OK, the new triangle is suspiciously ugly, but it can still be better than the original
             const Vec3f &v_orig = its.vertices[t[(e_info.edge) % 3]];
             Vec3f d1_orig = vf - v_orig;
             d1_orig.normalize();
             Vec3f d2_orig = vs - v_orig;
             d2_orig.normalize();
-            if (std::abs(d1_orig.dot(d2_orig)) < std::abs(dot)) { // original was not that ugly, so return flipped
+            if (std::fabs(d1_orig.dot(d2_orig)) < std::fabs(dot)) { // original was not that ugly, so return flipped
                 return true;
-            }
+            } // else original triangle was worse than the new, so don't discard the new yet
         }
         // IMPROVE: propagate new normal
         Vec3f n = d1.cross(d2);
